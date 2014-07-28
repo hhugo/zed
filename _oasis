@@ -45,7 +45,8 @@ Library zed
     Zed_lines,
     Zed_re,
     Zed_input,
-    Zed_macro
+    Zed_macro,
+    Zed_view
 
 # +-------------------------------------------------------------------+
 # | Doc                                                               |
