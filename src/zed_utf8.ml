@@ -7,7 +7,7 @@
  * This file is a part of Zed, an editor engine.
  *)
 
-open CamomileLibraryDyn.Camomile
+open CamomileLibrary
 
 type t = string
 exception Invalid of string * string
@@ -820,9 +820,17 @@ let rec rfind predicate str ofs =
     else
       ofs
 
-let spaces = UCharInfo.load_property_tbl `White_Space
+let spaces =
+  List.fold_left (fun set ch ->
+      USet.add (UChar.of_int ch) set)
+    USet.empty
+    [ 0x0009;0x000A;0x000B;0x000C;0x000D;
+      0x0020;0x0085;0x00A0;0x1680;0x2000;
+      0x2001;0x2002;0x2003;0x2004;0x2005;
+      0x2006;0x2007;0x2008;0x2009;0x200A;
+      0x2028;0x2029;0x202F;0x205F;0x3000 ]
 
-let is_space ch = UCharTbl.Bool.get spaces ch
+let is_space ch = USet.mem ch spaces
 
 let strip ?(predicate=is_space) str =
   let lofs = lfind predicate str 0 and rofs = rfind predicate str (String.length str) in
@@ -909,97 +917,3 @@ let extract_prev str ofs =
     raise Out_of_bounds
   else
     unsafe_extract_prev str ofs
-
-(* +-----------------------------------------------------------------+
-   | Escaping                                                        |
-   +-----------------------------------------------------------------+ *)
-
-let alphabetic = UCharInfo.load_property_tbl `Alphabetic
-
-let escaped_char ch =
-  match UChar.code ch with
-    | 7 ->
-        "\\a"
-    | 8 ->
-        "\\b"
-    | 9 ->
-        "\\t"
-    | 10 ->
-        "\\n"
-    | 11 ->
-        "\\v"
-    | 12 ->
-        "\\f"
-    | 13 ->
-        "\\r"
-    | 27 ->
-        "\\e"
-    | 92 ->
-        "\\\\"
-    | code when code >= 32 && code <= 126 ->
-        String.make 1 (Char.chr code)
-    | _ when UCharTbl.Bool.get alphabetic ch ->
-        singleton ch
-    | code when code <= 127 ->
-        Printf.sprintf "\\x%02x" code
-    | code when code <= 0xffff ->
-        Printf.sprintf "\\u%04x" code
-    | code ->
-        Printf.sprintf "\\U%06x" code
-
-let add_escaped_char buf ch =
-  match UChar.code ch with
-    | 7 ->
-        Buffer.add_string buf "\\a"
-    | 8 ->
-        Buffer.add_string buf "\\b"
-    | 9 ->
-        Buffer.add_string buf "\\t"
-    | 10 ->
-        Buffer.add_string buf "\\n"
-    | 11 ->
-        Buffer.add_string buf "\\v"
-    | 12 ->
-        Buffer.add_string buf "\\f"
-    | 13 ->
-        Buffer.add_string buf "\\r"
-    | 27 ->
-        Buffer.add_string buf "\\e"
-    | 92 ->
-        Buffer.add_string buf "\\\\"
-    | code when code >= 32 && code <= 126 ->
-        Buffer.add_char buf (Char.chr code)
-    | _ when UCharTbl.Bool.get alphabetic ch ->
-        add buf ch
-    | code when code <= 127 ->
-        Printf.bprintf buf "\\x%02x" code
-    | code when code <= 0xffff ->
-        Printf.bprintf buf "\\u%04x" code
-    | code ->
-        Printf.bprintf buf "\\U%06x" code
-
-let escaped str =
-  let buf = Buffer.create (String.length str) in
-  iter (add_escaped_char buf) str;
-  Buffer.contents buf
-
-let add_escaped buf str =
-  iter (add_escaped_char buf) str
-
-let add_escaped_string buf enc str =
-  match try Some (CharEncoding.recode_string enc CharEncoding.utf8 str) with CharEncoding.Malformed_code -> None with
-    | Some str ->
-        add_escaped buf str
-    | None ->
-        String.iter
-          (function
-             | '\x20' .. '\x7e' as ch ->
-                 Buffer.add_char buf ch
-             | ch ->
-                 Printf.bprintf buf "\\y%02x" (Char.code ch))
-          str
-
-let escaped_string enc str =
-  let buf = Buffer.create (String.length str) in
-  add_escaped_string buf enc str;
-  Buffer.contents buf

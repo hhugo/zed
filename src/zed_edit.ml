@@ -7,10 +7,8 @@
  * This file is a part of Zed, an editor engine.
  *)
 
-open CamomileLibraryDyn.Camomile
+open CamomileLibrary
 open React
-
-module CaseMap = CaseMap.Make(Zed_rope.Text)
 
 (* +-----------------------------------------------------------------+
    | Types                                                           |
@@ -55,8 +53,8 @@ type 'a t = {
   match_word : Zed_rope.t -> int -> int option;
   (* The function for matching words. *)
 
-  locale : string option signal;
-  (* The buffer's locale. *)
+  lowercase : Zed_rope.t -> Zed_rope.t;
+  uppercase : Zed_rope.t -> Zed_rope.t;
 
   undo : (Zed_rope.t * Zed_lines.t * int * int * int * int) array;
   (* The undo buffer. It is an array of element of the form [(text,
@@ -93,9 +91,7 @@ let match_by_regexp re rope idx =
               None
 
 let regexp_word =
-  let set = UCharInfo.load_property_set `Alphabetic in
-  let set = List.fold_left (fun set ch -> USet.add (UChar.of_char ch) set) set ['0'; '1'; '2'; '3'; '4'; '5'; '6'; '7'; '8'; '9'] in
-  Zed_re.compile (`Repn(`Set set, 1, None))
+  Zed_re.compile (`Repn(`Set (USet.compl Zed_utf8.spaces), 1, None))
 
 let new_clipboard () =
   let r = ref Zed_rope.empty in
@@ -103,7 +99,11 @@ let new_clipboard () =
     clipboard_set = (fun x -> r := x) }
 
 
-let create ?(editable=fun pos len -> true) ?(move = (+)) ?clipboard ?(match_word = match_by_regexp regexp_word) ?(locale = S.const None) ?(undo_size = 1000) () =
+let create ?(editable=fun pos len -> true) ?(move = (+)) ?clipboard
+    ?(match_word = match_by_regexp regexp_word)
+    ?locale
+    ?(uppercase = (fun x -> x)) ?(lowercase = (fun x -> x))
+    ?(undo_size = 1000) () =
   let changes, send_changes = E.create () in
   let erase_mode, set_erase_mode = S.create false in
   let selection, set_selection = S.create false in
@@ -128,7 +128,8 @@ let create ?(editable=fun pos len -> true) ?(move = (+)) ?clipboard ?(match_word
     selection;
     set_selection;
     match_word;
-    locale;
+    lowercase;
+    uppercase;
     undo = Array.create undo_size (Zed_rope.empty, Zed_lines.empty, 0, 0, 0, 0);
     undo_size;
     undo_start = 0;
@@ -535,8 +536,8 @@ let capitalize_word ctx =
             ctx
             (Zed_rope.length str)
             (Zed_rope.append
-               (CaseMap.uppercase ?locale:(S.value ctx.edit.locale) ch)
-               (CaseMap.lowercase ?locale:(S.value ctx.edit.locale) str'))
+               (ctx.edit.uppercase ch)
+               (ctx.edit.lowercase str'))
         end
     | None ->
         ()
@@ -550,7 +551,7 @@ let lowercase_word ctx =
           replace
             ctx
             (Zed_rope.length str)
-            (CaseMap.lowercase ?locale:(S.value ctx.edit.locale) str)
+            (ctx.edit.lowercase str)
         end
     | None ->
         ()
@@ -564,7 +565,7 @@ let uppercase_word ctx =
           replace
             ctx
             (Zed_rope.length str)
-            (CaseMap.uppercase ?locale:(S.value ctx.edit.locale) str)
+            (ctx.edit.uppercase str)
         end
     | None ->
         ()

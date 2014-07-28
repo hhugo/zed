@@ -33,6 +33,8 @@ val create :
   ?clipboard : clipboard ->
   ?match_word : (Zed_rope.t -> int -> int option) ->
   ?locale : string option signal ->
+  ?uppercase : (Zed_rope.t -> Zed_rope.t) ->
+  ?lowercase : (Zed_rope.t -> Zed_rope.t) ->
   ?undo_size : int ->
   unit -> 'a t
   (** [create ?editable ?move ?clipboard ()] creates a new edition
@@ -50,8 +52,8 @@ val create :
       [match_word] is used to recognize words. It must returns the end
       of the matched word if any.
 
-      [locale] is the locale of this buffer. It is used for case
-      mapping.
+      [uppercase].
+      [lowercase].
 
       [undo_size] is the size of the undo buffer. It is the number of
       state zed will remember. It defaults to [1000]. *)
