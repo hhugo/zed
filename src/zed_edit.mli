@@ -25,7 +25,12 @@ type clipboard = {
 }
 
 val new_clipboard : unit -> clipboard
-  (** [new_clipboard ()] creates a new clipboard using a reference. *)
+(** [new_clipboard ()] creates a new clipboard using a reference. *)
+
+type source =
+  | S_External
+  | S_Undo
+  | S_Cursor of Zed_cursor.t
 
 val create :
   ?editable : (int -> int -> bool) ->
@@ -85,7 +90,7 @@ val lines : 'a t -> Zed_lines.t
 val get_line : 'a t -> int -> Zed_rope.t
   (** [get_line edit n]* returns the rope corresponding to the [n]th line *)
 
-val changes : 'a t -> (int * int * int) event
+val changes : 'a t -> (int * int * int * source) event
   (** [changes edit] returns an event which occurs with values of the
       form [(start, added, removed)] when the contents of the engine
       changes. [start] is the start of modifications, [added] is the
@@ -234,6 +239,8 @@ val replace : 'a context -> int -> Zed_rope.t -> unit
       ]}
 
       but in one atomic operation. *)
+
+val patch : 'a context -> int -> int -> Zed_rope.t -> unit
 
 val newline : 'a context -> unit
   (** Insert a newline character. *)

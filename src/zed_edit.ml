@@ -19,6 +19,11 @@ type clipboard = {
   clipboard_set : Zed_rope.t -> unit;
 }
 
+type source =
+  | S_External
+  | S_Undo
+  | S_Cursor of Zed_cursor.t
+
 type 'a t = {
   mutable data : 'a option;
   (* Custom data attached to the engine. *)
@@ -29,8 +34,8 @@ type 'a t = {
   mutable lines : Zed_lines.t;
   (* The set of line position of [text]. *)
 
-  changes : (int * int * int) event;
-  send_changes : (int * int * int) -> unit;
+  changes : (int * int * int * source) event;
+  send_changes : (int * int * int * source) -> unit;
   (* Changes of the contents. *)
 
   erase_mode : bool signal;
@@ -136,7 +141,7 @@ let create ?(editable=fun pos len -> true) ?(move = (+)) ?clipboard
     undo_index = 0;
     undo_count = 0;
   } in
-  edit.mark <- Zed_cursor.create 0 changes (fun () -> edit.lines) 0 0;
+  edit.mark <- Zed_cursor.create 0 (React.E.map (fun (a,b,c,d) -> a,b,c) changes) (fun () -> edit.lines) 0 0;
   edit
 
 (* +-----------------------------------------------------------------+
@@ -180,7 +185,7 @@ let update engine cursors =
    +-----------------------------------------------------------------+ *)
 
 let new_cursor engine =
-  Zed_cursor.create (Zed_rope.length engine.text) engine.changes (fun () -> engine.lines) 0 0
+  Zed_cursor.create (Zed_rope.length engine.text) (React.E.map (fun (a,b,c,d) -> a,b,c) engine.changes) (fun () -> engine.lines) 0 0
 
 (* +-----------------------------------------------------------------+
    | Actions                                                         |
@@ -269,7 +274,10 @@ let at_bot ctx =
 let at_eot ctx =
   Zed_cursor.get_position ctx.cursor = Zed_rope.length ctx.edit.text
 
-let modify { edit } text lines position new_position added removed =
+let modify { edit; cursor } ?source text lines position new_position added removed =
+  let source = match source with
+    | None -> S_Cursor cursor
+    | Some s -> s in
   if edit.undo_size > 0 then begin
     edit.undo.(edit.undo_index) <- (text, lines, position, new_position, added, removed);
     edit.undo_index <- (edit.undo_index + 1) mod edit.undo_size;
@@ -278,7 +286,7 @@ let modify { edit } text lines position new_position added removed =
     else
       edit.undo_count <- edit.undo_count + 1
   end;
-  edit.send_changes (position, added, removed)
+  edit.send_changes (position, added, removed, source)
 
 let insert ctx rope =
   let position = Zed_cursor.get_position ctx.cursor in
@@ -354,6 +362,14 @@ let replace ctx len rope =
     move ctx rope_len
   end else
     raise Cannot_edit
+
+let patch ctx position len rope =
+  let text_len = Zed_rope.length ctx.edit.text in
+  let len = if position + len > text_len then text_len - position else len in
+  let rope_len = Zed_rope.length rope and text = ctx.edit.text and lines = ctx.edit.lines in
+    ctx.edit.text <- Zed_rope.replace text position len rope;
+    ctx.edit.lines <- Zed_lines.replace ctx.edit.lines position len (Zed_lines.of_rope rope);
+    modify ctx ~source:S_External text lines position position rope_len len
 
 let newline_rope =
   Zed_rope.singleton (UChar.of_char '\n')
@@ -634,7 +650,7 @@ let undo { check; edit; cursor } =
       edit.undo_index <- index;
       edit.text <- text;
       edit.lines <- lines;
-      edit.send_changes (pos, removed, added);
+      edit.send_changes (pos, removed, added, S_Undo);
       Zed_cursor.goto cursor new_pos
     end else
       raise Cannot_edit
