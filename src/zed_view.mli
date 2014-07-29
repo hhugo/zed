@@ -8,6 +8,8 @@ val get_lines : 'a t -> int * Zed_rope.t option list
 
 val changes : 'a t -> unit event
 
+val cursor_position : 'a t -> (int * int) signal
+
 val context : 'a t -> 'a Zed_edit.context
 val edit : 'a t -> 'a Zed_edit.t
 val cursor : 'a t -> Zed_cursor.t
